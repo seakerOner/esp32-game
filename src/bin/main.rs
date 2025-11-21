@@ -5,16 +5,21 @@
     reason = "mem::forget is generally not safe to do with esp_hal types, especially those \
     holding buffers for the duration of a data transfer."
 )]
+#![feature(vec_push_within_capacity)]
 
-use core::alloc::Layout;
-
-use alloc::vec::Vec;
 use esp_alloc::HEAP;
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
+use esp_hal::i2c::master::{Event, I2c};
 use esp_hal::time::{Duration, Instant};
 use esp_hal::{main, psram};
+use log::error;
 use log::info;
+
+mod utils;
+use utils::{vec_into_iram, vec_into_psram};
+mod inputs;
+use inputs::Inputs;
 
 extern crate alloc;
 
@@ -36,32 +41,14 @@ fn main() -> ! {
     esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: INTERNAL_HEAP_SIZE);
     esp_alloc::psram_allocator!(peripherals.PSRAM, esp_hal::psram);
 
-    let psram_ptr = unsafe {
-        HEAP.alloc_caps(
-            esp_alloc::MemoryCapability::External.into(),
-            Layout::array::<u32>(100).unwrap(),
-        )
-    };
+    let inputs = Inputs::new(peripherals.I2C0, peripherals.GPIO21, peripherals.GPIO22);
+    let mut test = vec_into_iram::<u32>(200).unwrap();
+    let mut test2 = vec_into_psram::<u32>(200).unwrap();
 
-    let ram_ptr = unsafe {
-        HEAP.alloc_caps(
-            esp_alloc::MemoryCapability::Internal.into(),
-            Layout::array::<u32>(100).unwrap(),
-        )
-    };
-
-    let mut v_in_ram = unsafe { Vec::from_raw_parts(ram_ptr as *mut u32, 0, 10) };
-    let mut v_in_psram = unsafe { Vec::from_raw_parts(psram_ptr as *mut u32, 0, 10) };
-
-    for _ in 0..3 {
-        v_in_ram.push(2);
-        v_in_psram.push(2);
-    }
-
+    let mut buf = [0u8; 1];
+    inputs.read_inputs(&mut buf);
     loop {
-        info!("----------------------------");
-        info!("HEAP STATS: {}", HEAP.stats());
-        info!("----------------------------");
+        //info!("HEAP STATS: {}", HEAP.stats());
 
         let delay_start = Instant::now();
         while delay_start.elapsed() < Duration::from_millis(500) {}
