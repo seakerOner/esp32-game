@@ -1,8 +1,7 @@
 use esp_hal::{
     Blocking,
-    gpio::interconnect::PeripheralOutput,
+    gpio::{Input, InputConfig, interconnect::PeripheralOutput},
     i2c::master::{I2c, Instance},
-    peripherals::Peripherals,
 };
 use log::{error, info};
 
@@ -21,17 +20,20 @@ const BUTTON_B: u8 = 0b0111_1111;
 
 const IDLE: u8 = 0b1111_1111;
 
-pub struct Inputs<'a> {
+pub struct I2cInputs<'a> {
     i2c: I2c<'a, Blocking>,
+    left_bump: Option<Input<'a>>,
+    right_bump: Option<Input<'a>>,
+    menu: Option<Input<'a>>,
 }
 
-impl<'a> Inputs<'a> {
+impl<'a> I2cInputs<'a> {
     pub fn new<'d: 'a>(
         i2c: impl Instance + 'd,
         sda: impl PeripheralOutput<'d>,
         scl: impl PeripheralOutput<'d>,
     ) -> Self {
-        Inputs {
+        I2cInputs {
             i2c: {
                 I2c::new(i2c, esp_hal::i2c::master::Config::default())
                     .unwrap_or_else(|e| {
@@ -41,10 +43,25 @@ impl<'a> Inputs<'a> {
                     .with_sda(sda)
                     .with_scl(scl)
             },
+            left_bump: None,
+            right_bump: None,
+            menu: None,
         }
     }
 
-    pub fn read_inputs(mut self, buf: &mut [u8]) {
+    pub fn with_ext_inputs<'d: 'a>(
+        mut self,
+        left_bump: Input<'d>,
+        right_bump: Input<'d>,
+        menu: Input<'a>,
+    ) -> Self {
+        self.left_bump = Some(left_bump);
+        self.right_bump = Some(right_bump);
+        self.menu = Some(menu);
+        self
+    }
+
+    pub fn read_inputs(&mut self, buf: &mut [u8]) {
         match self.i2c.read(PCF8574_ADDRESS, buf) {
             Ok(_) => match buf[0] {
                 NUMPAD_UP => info!("NUMPAD_UP"),
@@ -58,6 +75,21 @@ impl<'a> Inputs<'a> {
                 _ => {}
             },
             Err(e) => error!("No device at {:X}, error: {:}", PCF8574_ADDRESS, e),
+        }
+        if let Some(i) = self.left_bump.as_mut() {
+            if i.is_low() {
+                info!("LEFT_BUMP");
+            }
+        }
+        if let Some(i) = self.right_bump.as_mut() {
+            if i.is_low() {
+                info!("RIGHT_BUMP");
+            }
+        }
+        if let Some(i) = self.menu.as_mut() {
+            if i.is_low() {
+                info!("MENU");
+            }
         }
     }
 }

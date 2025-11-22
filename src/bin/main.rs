@@ -7,10 +7,12 @@
 )]
 #![feature(vec_push_within_capacity)]
 
+use alloc::vec::Vec;
 use esp_alloc::HEAP;
 use esp_backtrace as _;
+use esp_hal::analog::adc::AdcChannel;
 use esp_hal::clock::CpuClock;
-use esp_hal::i2c::master::{Event, I2c};
+use esp_hal::gpio::{Input, InputConfig, Output, Pin, Pull};
 use esp_hal::time::{Duration, Instant};
 use esp_hal::{main, psram};
 use log::error;
@@ -19,11 +21,12 @@ use log::info;
 mod utils;
 use utils::{vec_into_iram, vec_into_psram};
 mod inputs;
-use inputs::Inputs;
+use inputs::I2cInputs;
 
 extern crate alloc;
 
 const INTERNAL_HEAP_SIZE: usize = 98768;
+const FPS_WANTED: u64 = 60;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
@@ -41,16 +44,36 @@ fn main() -> ! {
     esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: INTERNAL_HEAP_SIZE);
     esp_alloc::psram_allocator!(peripherals.PSRAM, esp_hal::psram);
 
-    let inputs = Inputs::new(peripherals.I2C0, peripherals.GPIO21, peripherals.GPIO22);
-    let mut test = vec_into_iram::<u32>(200).unwrap();
-    let mut test2 = vec_into_psram::<u32>(200).unwrap();
+    //let mut test2 = vec_into_psram::<u32>(200).unwrap();
+    let left_bump = Input::new(
+        peripherals.GPIO36,
+        InputConfig::default().with_pull(Pull::None),
+    );
+    let menu = Input::new(
+        peripherals.GPIO35,
+        InputConfig::default().with_pull(Pull::None),
+    );
+    let right_bump = Input::new(
+        peripherals.GPIO34,
+        InputConfig::default().with_pull(Pull::Up),
+    );
+
+    let mut inputs = I2cInputs::new(peripherals.I2C0, peripherals.GPIO21, peripherals.GPIO22)
+        .with_ext_inputs(left_bump, right_bump, menu);
 
     let mut buf = [0u8; 1];
-    inputs.read_inputs(&mut buf);
+    let mut running_fps: u32 = 0;
     loop {
+        inputs.read_inputs(&mut buf);
         //info!("HEAP STATS: {}", HEAP.stats());
 
         let delay_start = Instant::now();
-        while delay_start.elapsed() < Duration::from_millis(500) {}
+        while delay_start.elapsed() < Duration::from_micros(1000_000 / (FPS_WANTED * 100)) {}
+        running_fps = running_fps + 1;
+
+        if running_fps == FPS_WANTED as u32 {
+            //info!("FPS: {}", running_fps);
+            running_fps = 0;
+        }
     }
 }
