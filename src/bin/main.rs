@@ -8,7 +8,7 @@
 #![feature(vec_push_within_capacity)]
 #![feature(slice_as_array)]
 
-use embedded_graphics::pixelcolor::Rgb666;
+use embedded_graphics::pixelcolor::{Rgb565, Rgb666};
 use embedded_graphics::prelude::RgbColor;
 use esp_alloc::HEAP;
 use esp_backtrace as _;
@@ -16,7 +16,7 @@ use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
 use esp_hal::spi::master::{Config, Spi};
-use esp_hal::time::{Duration, Instant};
+use esp_hal::time::{Duration, Instant, Rate};
 use esp_hal::{Blocking, main, spi};
 
 mod utils;
@@ -65,15 +65,19 @@ fn main() -> ! {
     let mut inputs = I2cInputs::new(peripherals.I2C0, peripherals.GPIO21, peripherals.GPIO22)
         .with_ext_inputs(left_bump, right_bump, menu);
 
-    let dc = Output::new(peripherals.GPIO16, Level::High, OutputConfig::default());
-    let cs = Output::new(peripherals.GPIO15, Level::High, OutputConfig::default());
-    let mut bl = Output::new(peripherals.GPIO4, Level::High, OutputConfig::default());
+    let dc = Output::new(peripherals.GPIO12, Level::High, OutputConfig::default());
+    let cs = Output::new(peripherals.GPIO5, Level::High, OutputConfig::default());
+    let mut bl = Output::new(peripherals.GPIO27, Level::High, OutputConfig::default());
     bl.set_high();
 
-    let spi_bus: Spi<'_, Blocking> = spi::master::Spi::new(peripherals.SPI2, Config::default())
-        .expect("Could not create spi bus")
-        .with_sck(peripherals.GPIO18)
-        .with_mosi(peripherals.GPIO23);
+    let spi_bus: Spi<'_, Blocking> = spi::master::Spi::new(
+        peripherals.SPI2,
+        Config::default(), // .with_mode(spi::Mode::_0)
+                           // .with_frequency(Rate::from_mhz(40)),
+    )
+    .expect("Could not create spi bus")
+    .with_sck(peripherals.GPIO18)
+    .with_mosi(peripherals.GPIO23);
 
     let spi_device = embedded_hal_bus::spi::ExclusiveDevice::new_no_delay(spi_bus, cs)
         .expect("Could not create spi device");
@@ -88,10 +92,10 @@ fn main() -> ! {
     let mut delay = Delay::new();
     let mut monitor = LcdMonitor::init_display(spi_iface, &mut delay, &mut rst).unwrap();
 
-    let color = Rgb666::RED;
+    let color = Rgb565::RED;
     let square_width = 40 - 20;
     let square_height = 40 - 20;
-    let mut color_pixels = vec_into_psram::<Rgb666>(square_width * square_height).unwrap();
+    let mut color_pixels = vec_into_psram::<Rgb565>(square_width * square_height).unwrap();
 
     for _ in 0..(square_height * square_width) {
         if let Err(color) = color_pixels.push_within_capacity(color) {

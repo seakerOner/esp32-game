@@ -1,12 +1,9 @@
-use embedded_graphics::{pixelcolor::Rgb666, prelude::*};
 use embedded_hal::digital::OutputPin;
-use embedded_hal::spi::ErrorKind;
 use esp_hal::delay::Delay;
-use esp_hal::gpio::Output;
 use log::error;
-use mipidsi::interface::{Interface, SpiInterface};
+use mipidsi::interface::SpiInterface;
 use mipidsi::options::Orientation;
-use mipidsi::{Builder, models::ILI9341Rgb666};
+use mipidsi::{Builder, models::ILI9341Rgb565};
 use mipidsi::{Display, NoResetPin};
 
 pub struct LcdMonitor;
@@ -16,21 +13,21 @@ impl LcdMonitor {
         di: SpiInterface<'d, SPI, DC>,
         delay: &mut Delay,
         rst_pin: &mut impl OutputPin,
-    ) -> Option<Display<SpiInterface<'d, SPI, DC>, ILI9341Rgb666, NoResetPin>>
+    ) -> Option<Display<SpiInterface<'d, SPI, DC>, ILI9341Rgb565, NoResetPin>>
     where
         SPI: embedded_hal::spi::SpiDevice,
         DC: embedded_hal::digital::OutputPin,
     {
         rst_pin.set_low().ok();
-        delay.delay_millis(20);
+        delay.delay_millis(20u32);
 
         rst_pin.set_high().ok();
-        delay.delay_millis(20);
+        delay.delay_millis(200u32);
 
-        if let Ok(b) = Builder::new(ILI9341Rgb666, di)
+        if let Ok(b) = Builder::new(ILI9341Rgb565, di)
             .orientation(Orientation::new().flip_horizontal())
             .display_size(240, 320)
-            .color_order(mipidsi::options::ColorOrder::Rgb)
+            .color_order(mipidsi::options::ColorOrder::Bgr)
             .init(delay)
         {
             Some(b)
@@ -40,4 +37,3 @@ impl LcdMonitor {
         }
     }
 }
-
