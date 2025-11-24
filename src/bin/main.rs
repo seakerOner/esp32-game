@@ -9,7 +9,7 @@
 #![feature(slice_as_array)]
 
 use embedded_graphics::pixelcolor::Rgb565;
-use embedded_graphics::prelude::RgbColor;
+use embedded_graphics::prelude::{RgbColor, WebColors};
 use esp_alloc::HEAP;
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
@@ -18,6 +18,7 @@ use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
 use esp_hal::spi::master::{Config, Spi};
 use esp_hal::time::{Duration, Instant};
 use esp_hal::{Blocking, main, spi};
+use log::{error, info};
 
 mod utils;
 use mipidsi::interface::SpiInterface;
@@ -26,15 +27,20 @@ mod inputs;
 use inputs::I2cInputs;
 mod lcd;
 use lcd::LcdMonitor;
-use log::{error, info};
+mod assets;
+use assets::Player;
+
+use crate::assets::Mob;
 
 extern crate alloc;
 
 const INTERNAL_HEAP_SIZE: usize = 98768;
-const FPS_WANTED: u64 = 60;
 
 const MONITOR_WIDTH: usize = 320;
 const MONITOR_HEIGHT: usize = 240;
+
+const MONITOR_COLLUMNS: usize = MONITOR_WIDTH / 32;
+const MONITOR_ROWS: usize = MONITOR_HEIGHT / 32;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
@@ -89,44 +95,38 @@ fn main() -> ! {
     let mut rst = Output::new(peripherals.GPIO2, Level::Low, OutputConfig::default());
 
     let mut delay = Delay::new();
-    let mut monitor = LcdMonitor::init_display(spi_iface, &mut delay, &mut rst).unwrap();
+    let mut monitor = LcdMonitor::init_display_raw(spi_iface, &mut delay, &mut rst).unwrap();
 
-    let color = Rgb565::RED;
-    let square_height = MONITOR_HEIGHT;
-    let square_width = MONITOR_WIDTH;
-    let mut color_pixels = vec_into_psram::<Rgb565>(square_width * square_height).unwrap();
+    LcdMonitor::fill_monitor(&mut monitor, Rgb565::CSS_LIGHT_GREEN);
 
-    for _ in 0..(square_height * square_width) {
-        if let Err(color) = color_pixels.push_within_capacity(color) {
-            color_pixels.reserve(1);
+    let mut player_texture = vec_into_psram::<Rgb565>(32 * 32).unwrap();
 
-            color_pixels.push_within_capacity(color).unwrap();
-        };
+    for _ in 0..(32 * 32) {
+        if let Err(color) = player_texture.push_within_capacity(Rgb565::RED) {
+            player_texture.reserve_exact(1);
+
+            player_texture.push_within_capacity(color).unwrap();
+        }
     }
+    let player = Player::new(player_texture);
 
-    if let Err(_) = monitor.set_pixels(
-        0,
-        0,
-        square_height as u16,
-        square_width as u16,
-        color_pixels,
-    ) {
-        error!("Could not draw to monitor");
-    }
+    player.draw(
+        (MONITOR_HEIGHT / 2) as u16,
+        (MONITOR_WIDTH / 2) as u16,
+        &mut monitor,
+    );
 
-    let mut buf = [0u8; 1];
     let mut running_fps: u32 = 0;
+    let mut buf = [0u8; 1];
 
     loop {
         let delay_start = Instant::now();
-        while delay_start.elapsed() < Duration::from_micros(1000_000 / (FPS_WANTED * 100)) {}
-        running_fps = running_fps + 1;
-
-        if running_fps == FPS_WANTED as u32 {
-            info!("HEAP STATS: {}", HEAP.stats());
-            //info!("FPS: {}", running_fps);
+        while delay_start.elapsed() < Duration::from_micros(1000_000) {
+            running_fps = running_fps + 1;
             inputs.read_inputs(&mut buf);
-            running_fps = 0;
         }
+        //info!("HEAP STATS: {}", HEAP.stats());
+        info!("FPS: {}", running_fps);
+        running_fps = 0;
     }
 }
