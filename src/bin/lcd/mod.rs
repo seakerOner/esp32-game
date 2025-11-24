@@ -6,6 +6,8 @@ use mipidsi::options::Orientation;
 use mipidsi::{Builder, models::ILI9341Rgb565};
 use mipidsi::{Display, NoResetPin};
 
+use crate::{MONITOR_HEIGHT, MONITOR_WIDTH};
+
 pub struct LcdMonitor;
 
 impl LcdMonitor {
@@ -26,7 +28,7 @@ impl LcdMonitor {
 
         if let Ok(b) = Builder::new(ILI9341Rgb565, di)
             .orientation(Orientation::new().flip_horizontal())
-            .display_size(240, 320)
+            .display_size(MONITOR_HEIGHT as u16, MONITOR_WIDTH as u16)
             .color_order(mipidsi::options::ColorOrder::Bgr)
             .init(delay)
         {

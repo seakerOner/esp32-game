@@ -8,7 +8,7 @@
 #![feature(vec_push_within_capacity)]
 #![feature(slice_as_array)]
 
-use embedded_graphics::pixelcolor::{Rgb565, Rgb666};
+use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::RgbColor;
 use esp_alloc::HEAP;
 use esp_backtrace as _;
@@ -16,7 +16,7 @@ use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
 use esp_hal::spi::master::{Config, Spi};
-use esp_hal::time::{Duration, Instant, Rate};
+use esp_hal::time::{Duration, Instant};
 use esp_hal::{Blocking, main, spi};
 
 mod utils;
@@ -32,6 +32,9 @@ extern crate alloc;
 
 const INTERNAL_HEAP_SIZE: usize = 98768;
 const FPS_WANTED: u64 = 60;
+
+const MONITOR_WIDTH: usize = 320;
+const MONITOR_HEIGHT: usize = 240;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
@@ -70,19 +73,15 @@ fn main() -> ! {
     let mut bl = Output::new(peripherals.GPIO27, Level::High, OutputConfig::default());
     bl.set_high();
 
-    let spi_bus: Spi<'_, Blocking> = spi::master::Spi::new(
-        peripherals.SPI2,
-        Config::default(), // .with_mode(spi::Mode::_0)
-                           // .with_frequency(Rate::from_mhz(40)),
-    )
-    .expect("Could not create spi bus")
-    .with_sck(peripherals.GPIO18)
-    .with_mosi(peripherals.GPIO23);
+    let spi_bus: Spi<'_, Blocking> = spi::master::Spi::new(peripherals.SPI2, Config::default())
+        .expect("Could not create spi bus")
+        .with_sck(peripherals.GPIO18)
+        .with_mosi(peripherals.GPIO23);
 
     let spi_device = embedded_hal_bus::spi::ExclusiveDevice::new_no_delay(spi_bus, cs)
         .expect("Could not create spi device");
 
-    let buf = buffer_into_psram::<u8>(512).unwrap();
+    let buf = buffer_into_iram::<u8>(512).unwrap();
     let buf = unsafe { &mut *buf };
 
     let spi_iface = SpiInterface::new(spi_device, dc, buf);
@@ -93,8 +92,8 @@ fn main() -> ! {
     let mut monitor = LcdMonitor::init_display(spi_iface, &mut delay, &mut rst).unwrap();
 
     let color = Rgb565::RED;
-    let square_width = 40 - 20;
-    let square_height = 40 - 20;
+    let square_height = MONITOR_HEIGHT;
+    let square_width = MONITOR_WIDTH;
     let mut color_pixels = vec_into_psram::<Rgb565>(square_width * square_height).unwrap();
 
     for _ in 0..(square_height * square_width) {
@@ -105,7 +104,13 @@ fn main() -> ! {
         };
     }
 
-    if let Err(_) = monitor.set_pixels(20, 20, 40, 40, color_pixels) {
+    if let Err(_) = monitor.set_pixels(
+        0,
+        0,
+        square_height as u16,
+        square_width as u16,
+        color_pixels,
+    ) {
         error!("Could not draw to monitor");
     }
 
@@ -118,7 +123,7 @@ fn main() -> ! {
         running_fps = running_fps + 1;
 
         if running_fps == FPS_WANTED as u32 {
-            //info!("HEAP STATS: {}", HEAP.stats());
+            info!("HEAP STATS: {}", HEAP.stats());
             //info!("FPS: {}", running_fps);
             inputs.read_inputs(&mut buf);
             running_fps = 0;
