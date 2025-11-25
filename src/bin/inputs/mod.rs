@@ -1,3 +1,4 @@
+use alloc::{string::String, vec::Vec};
 use esp_hal::{
     Blocking,
     gpio::{Input, InputConfig, interconnect::PeripheralOutput},
@@ -5,20 +6,22 @@ use esp_hal::{
 };
 use log::{error, info};
 
+use crate::utils::vec_into_iram;
+
 static PCF8574_ADDRESS: u8 = 0x20;
 
-const NUMPAD_UP: u8 = 0b1111_1011;
-const NUMPAD_DOWN: u8 = 0b1111_0111;
-const NUMPAD_LEFT: u8 = 0b1110_1111;
-const NUMPAD_RIGHT: u8 = 0b1101_1111;
+pub const NUMPAD_UP: u8 = 0b1111_1011;
+pub const NUMPAD_DOWN: u8 = 0b1111_0111;
+pub const NUMPAD_LEFT: u8 = 0b1110_1111;
+pub const NUMPAD_RIGHT: u8 = 0b1101_1111;
 
-const NUMPAD_SELECT: u8 = 0b1111_1101;
-const NUMPAD_START: u8 = 0b1111_1110;
+pub const NUMPAD_SELECT: u8 = 0b1111_1101;
+pub const NUMPAD_START: u8 = 0b1111_1110;
 
-const BUTTON_A: u8 = 0b1011_1111;
-const BUTTON_B: u8 = 0b0111_1111;
+pub const NUMPAD_BUTTON_A: u8 = 0b1011_1111;
+pub const NUMPAD_BUTTON_B: u8 = 0b0111_1111;
 
-const IDLE: u8 = 0b1111_1111;
+pub const NUMPAD_IDLE: u8 = 0b1111_1111;
 
 pub struct I2cInputs<'a> {
     i2c: I2c<'a, Blocking>,
@@ -61,35 +64,71 @@ impl<'a> I2cInputs<'a> {
         self
     }
 
-    pub fn read_inputs(&mut self, buf: &mut [u8]) {
+    pub fn read_inputs(&mut self, buf: &mut [u8]) -> (u8, String) {
+        let mut i2c_input: u8 = 0;
+        let mut ext_input: String = String::new();
+
         match self.i2c.read(PCF8574_ADDRESS, buf) {
             Ok(_) => match buf[0] {
-                NUMPAD_UP => info!("NUMPAD_UP"),
-                NUMPAD_DOWN => info!("NUMPAD_DOWN"),
-                NUMPAD_LEFT => info!("NUMPAD_LEFT"),
-                NUMPAD_RIGHT => info!("NUMPAD_RIGHT"),
-                NUMPAD_START => info!("START"),
-                NUMPAD_SELECT => info!("SELECT"),
-                BUTTON_A => info!("A"),
-                BUTTON_B => info!("B"),
+                NUMPAD_UP => {
+                    //info!("NUMPAD_UP");
+                    i2c_input = NUMPAD_UP;
+                }
+                NUMPAD_DOWN => {
+                    //info!("NUMPAD_DOWN");
+                    i2c_input = NUMPAD_DOWN;
+                }
+                NUMPAD_LEFT => {
+                    //info!("NUMPAD_LEFT");
+                    i2c_input = NUMPAD_LEFT;
+                }
+                NUMPAD_RIGHT => {
+                    //info!("NUMPAD_RIGHT");
+                    i2c_input = NUMPAD_RIGHT;
+                }
+                NUMPAD_START => {
+                    //info!("START");
+                    i2c_input = NUMPAD_START;
+                }
+                NUMPAD_SELECT => {
+                    //info!("SELECT");
+                    i2c_input = NUMPAD_SELECT;
+                }
+                NUMPAD_BUTTON_A => {
+                    //info!("A");
+                    i2c_input = NUMPAD_BUTTON_A;
+                }
+                NUMPAD_BUTTON_B => {
+                    //info!("B");
+                    i2c_input = NUMPAD_BUTTON_B;
+                }
+                NUMPAD_IDLE => {
+                    //info!("IDLE");
+                    i2c_input = NUMPAD_IDLE;
+                }
                 _ => {}
             },
             Err(e) => error!("No device at {:X}, error: {:}", PCF8574_ADDRESS, e),
         }
         if let Some(i) = self.left_bump.as_mut() {
             if i.is_low() {
-                info!("LEFT_BUMP");
+                //info!("LEFT_BUMP");
+                ext_input = String::from("LEFT_BUMP");
             }
         }
         if let Some(i) = self.right_bump.as_mut() {
             if i.is_low() {
-                info!("RIGHT_BUMP");
+                //info!("RIGHT_BUMP");
+                ext_input = String::from("RIGHT_BUMP");
             }
         }
         if let Some(i) = self.menu.as_mut() {
             if i.is_low() {
-                info!("MENU");
+                //info!("MENU");
+                ext_input = String::from("BUMP");
             }
         }
+
+        (i2c_input, ext_input)
     }
 }

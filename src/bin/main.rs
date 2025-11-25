@@ -108,7 +108,7 @@ fn main() -> ! {
             player_texture.push_within_capacity(color).unwrap();
         }
     }
-    let player = Player::new(player_texture);
+    let mut player = Player::new(player_texture);
 
     player.draw(
         (MONITOR_HEIGHT / 2) as u16,
@@ -123,7 +123,9 @@ fn main() -> ! {
         let delay_start = Instant::now();
         while delay_start.elapsed() < Duration::from_micros(1000_000) {
             running_fps = running_fps + 1;
-            inputs.read_inputs(&mut buf);
+            let (i2c_input, ext_input) = inputs.read_inputs(&mut buf);
+
+            player.update_state((i2c_input, ext_input), &mut monitor);
         }
         //info!("HEAP STATS: {}", HEAP.stats());
         info!("FPS: {}", running_fps);
